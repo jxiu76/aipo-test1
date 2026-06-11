@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIPO Attendance Digitizer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background-color: #ffffff; color: #000000; line-height: 1.6; }
+        .container { max-width: 650px; margin: 0 auto; padding: 40px 20px; }
+        header { border-bottom: 1px solid #000000; padding-bottom: 20px; margin-bottom: 16px; }
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+        .subtitle { font-size: 14px; color: #333333; }
+        .status-line { font-size: 12px; color: #666666; margin-bottom: 32px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-section { margin-bottom: 20px; }
+        label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        select, input[type="file"] { width: 100%; padding: 10px; border: 1px solid #000000; font-size: 14px; background-color: #ffffff; }
+        
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; padding: 16px; border: 1px dashed #cccccc; background-color: #fcfcfc; }
+        .full-width { grid-column: span 2; }
+        .config-row { display: flex; gap: 8px; margin-top: 4px; }
+        .mini-btn { padding: 2px 8px; font-size: 11px; border: 1px solid #000000; background: #ffffff; cursor: pointer; }
+        .mini-btn.delete { color: #cc0000; border-color: #cc0000; }
+        
+        button.main-action { width: 100%; padding: 12px; border: 1px solid #000000; background-color: #000000; color: #ffffff; font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; }
+        button.main-action:hover { background-color: #ffffff; color: #000000; }
+        
+        .progress-container { display: none; margin-top: 24px; }
+        .progress-bar { width: 100%; height: 2px; background-color: #f0f0f0; border: 1px solid #000000; margin-bottom: 12px; overflow: hidden; }
+        .progress-fill { height: 100%; background-color: #000000; width: 0%; transition: width 0.3s ease; }
+        .progress-text { font-size: 14px; text-align: center; color: #333333; }
+        
+        .results { margin-top: 32px; padding-top: 32px; border-top: 1px solid #000000; }
+        .result-item { margin-bottom: 24px; }
+        .result-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .button-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+        
+        .entries-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+        .entries-table thead { border-bottom: 1px solid #000000; }
+        .entries-table th { padding: 12px 8px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 12px; }
+        .entries-table td { padding: 10px 8px; border-bottom: 1px solid #f0f0f0; }
+        .non-working td { color: #999999; background-color: #fafafa; }
+        .error { color: #cc0000; font-size: 14px; margin-top: 12px; text-align: center; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AIPO Attendance Digitizer</h1>
+            <p class="subtitle">Extract attendance sheets to clean records</p>
+        </header>
+
+        <div class="status-line">Engine Status: <span id="engine-status">Checking...</span></div>
+
+        <!-- Dropdown Configuration Settings Grid -->
+        <div class="meta-grid">
+            <div>
+                <label>Employee Name</label>
+                <select id="employee-select"></select>
+                <div class="config-row">
+                    <button class="mini-btn" onclick="addItem('employee')">+ Add</button>
+                    <button class="mini-btn delete" onclick="deleteItem('employee')">- Remove</button>
+                </div>
+            </div>
+            <div>
+                <label>Designation</label>
+                <select id="designation-select"></select>
+                <div class="config-row">
+                    <button class="mini-btn" onclick="addItem('designation')">+ Add</button>
+                    <button class="mini-btn delete" onclick="deleteItem('designation')">- Remove</button>
+                </div>
+            </div>
+            <div class="full-width">
+                <label>Certified & Approved By</label>
+                <select id="signee-select"></select>
+                <div class="config-row">
+                    <button class="mini-btn" onclick="addSignee()">+ Add Signee</button>
+                    <button class="mini-btn delete" onclick="deleteItem('signee')">- Remove</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <label for="file-input">Select Attendance Sheet Images</label>
+            <input type="file" id="file-input" multiple accept="image/*">
+        </div>
+
+        <button id="process-btn" class="main-action">Process Sheets</button>
+
+        <div id="progress-container" class="progress-container">
+            <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+            <div class="progress-text">Scanning locally: <span id="progress-percent">0</span>%</div>
+        </div>
+
+        <!-- Output Display Panel -->
+        <div id="results" class="results" style="display: none;">
+            
+            <!-- EXPORT CONTROLS FIRST (Directly under main input panel) -->
+            <div class="button-group">
+                <button id="google-sheets-btn" class="mini-btn" style="font-weight: 600; padding: 10px; background-color: #f4fbf7; border-color: #1e7e34;">Export Google Sheet</button>
+                <button id="download-excel-btn" class="mini-btn" style="padding: 10px;">Download Excel</button>
+                <button id="clear-btn" class="mini-btn delete" style="padding: 10px;">Clear</button>
+            </div>
+
+            <div class="result-item">
+                <div class="result-title">Target Profile Identity</div>
+                <div id="target-display-node" style="font-size: 14px; color: #333; padding: 8px; background: #fafafa; border: 1px solid #eee;"></div>
+            </div>
+
+            <!-- EXTRACTED DATAGRID LAST (At the bottom of the page structure) -->
+            <div class="result-item">
+                <div class="result-title">Extracted Data Preview</div>
+                <table class="entries-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time In</th>
+                            <th>Time Out</th>
+                            <th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody id="entries-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="error-message" class="error"></div>
+    </div>
+
+    <script>
+        let currentData = null;
+        let progressInterval = null;
+
+        // Configuration list storage layers
+        const defaultLists = {
+            employee: ["May Angela Razon", "Robynne Gonzales"],
+            designation: ["Project Admin Officer I", "Research Assistant"],
+            signee: ["Engr. Benjamin N. Mirasol, MBA | Project Leader"]
+        };
+
+        function getList(key) { return localStorage.getItem('dtr_' + key) ? JSON.parse(localStorage.getItem('dtr_' + key)) : defaultLists[key]; }
+        function saveList(key, arr) { localStorage.setItem('dtr_' + key, JSON.stringify(arr)); populateDropdowns(); }
+        
+        function populateDropdowns() {
+            renderOptions('employee-select', getList('employee'));
+            renderOptions('designation-select', getList('designation'));
+            renderOptions('signee-select', getList('signee'));
+        }
+
+        function renderOptions(id, items) {
+            const select = document.getElementById(id); select.innerHTML = '';
+            items.forEach(i => { const o = document.createElement('option'); o.value = i; o.textContent = i; select.appendChild(o); });
+        }
+
+        function addItem(key) {
+            const v = prompt(`Enter new ${key}:`);
+            if (v && v.trim()) { const l = getList(key); l.push(v.trim()); saveList(key, l); document.getElementById(`${key}-select`).value = v.trim(); }
+        }
+
+        function addSignee() {
+            const n = prompt("Signee Full Name:"); const t = prompt("Signee Work Title / Role:");
+            if(n && t) { const l = getList('signee'); l.push(`${n.trim()} | ${t.trim()}`); saveList('signee', l); }
+        }
+
+        function deleteItem(key) {
+            const s = document.getElementById(`${key}-select`); if(!s.value) return;
+            if(confirm(`Delete "${s.value}" from memory list?`)) { saveList(key, getList(key).filter(i => i !== s.value)); }
+        }
+
+        // Initialize user workspace lists
+        populateDropdowns();
+
+        // UI DOM Reference Bindings
+        const processBtn = document.getElementById('process-btn');
+        const resultsDiv = document.getElementById('results');
+        const errorDiv = document.getElementById('error-message');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressPercent = document.getElementById('progress-percent');
+        const fileInput = document.getElementById('file-input'); // Fixed visibility declaration
+
+        // Simulation progress animations
+        function startProgress() {
+            progressContainer.style.display = 'block'; let p = 0;
+            progressInterval = setInterval(() => { p += Math.random() * 4; if (p > 95) p = 95; progressFill.style.width = p + '%'; progressPercent.textContent = Math.floor(p); }, 600);
+        }
+        function finishProgress() { clearInterval(progressInterval); progressFill.style.width = '100%'; progressPercent.textContent = '100'; setTimeout(() => { progressContainer.style.display = 'none'; }, 400); }
+
+        // Process Action Engine Loop
+        processBtn.addEventListener('click', async () => {
+            if (fileInput.files.length === 0) { errorDiv.textContent = 'Please select image files first.'; return; }
+            errorDiv.textContent = ''; processBtn.disabled = true; startProgress();
+            
+            const formData = new FormData();
+            for (let f of fileInput.files) { formData.append('files', f); }
+
+            try {
+                const r = await fetch('/api/process', { method: 'POST', body: formData });
+                const d = await r.json();
+                finishProgress();
+
+                if (d.success) {
+                    currentData = d;
+                    
+                    // OPTION A: Smart Autoselect logic engine mapping
+                    if (d.detected_name) {
+                        const employees = getList('employee');
+                        const match = employees.find(e => e.toLowerCase().includes(d.detected_name.toLowerCase()) || d.detected_name.toLowerCase().includes(e.toLowerCase()));
+                        
+                        if (match) {
+                            document.getElementById('employee-select').value = match;
+                        } else {
+                            employees.push(d.detected_name);
+                            saveList('employee', employees);
+                            document.getElementById('employee-select').value = d.detected_name;
+                        }
+                    }
+                    
+                    displayResults(d);
+                    resultsDiv.style.display = 'block';
+                } else { errorDiv.textContent = 'Extraction Processing Error: ' + d.error; }
+            } catch (e) { finishProgress(); errorDiv.textContent = 'Server Connection Timeout: ' + e.message; }
+            finally { processBtn.disabled = false; }
+        });
+
+        function displayResults(d) {
+            const empName = document.getElementById('employee-select').value;
+            const desig = document.getElementById('designation-select').value;
+            document.getElementById('target-display-node').innerHTML = `Executing Document Pack: <strong>${empName}</strong> — <i>${desig}</i>`;
+            
+            const tbody = document.getElementById('entries-body'); tbody.innerHTML = '';
+            d.entries.forEach(e => {
+                const tr = document.createElement('tr'); if (e.non_working) tr.className = 'non-working';
+                tr.innerHTML = `<td>${e.date}</td><td>${e.non_working ? e.remarks.toUpperCase() : (e.time_in || '')}</td><td>${e.non_working ? '' : (e.time_out || '')}</td><td>${e.non_working ? '' : (e.remarks || '')}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Direct Export to Google Sheets Endpoint Event
+        document.getElementById('google-sheets-btn').addEventListener('click', async () => {
+            if(!currentData) return;
+            errorDiv.style.color = "#0056b3";
+            errorDiv.textContent = "Connecting to Google Cloud Secure Server...";
+            const [sName, sTitle] = document.getElementById('signee-select').value.split(' | ');
+            
+            try {
+                const r = await fetch('/api/export-google-sheets', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        employee_name: document.getElementById('employee-select').value,
+                        designation: document.getElementById('designation-select').value,
+                        signee_name: sName || '', signee_title: sTitle || '',
+                        entries: currentData.entries
+                    })
+                });
+                const res = await r.json();
+                if(res.success && res.sheet_url) {
+                    // Turn text green and announce successful Drive synchronization
+                    errorDiv.style.color = "#2b7a1d";
+                    errorDiv.innerHTML = `Success! The sheet has been generated and uploaded to your Google Drive.<br><small style="color: #666;">Opening your document link now...</small>`;
+                    
+                    // Delay the popup slightly so they can read the verification confirmation text
+                    setTimeout(() => {
+                        window.open(res.sheet_url, '_blank');
+                    }, 1200);
+                } else { 
+                    errorDiv.style.color = "#cc0000";
+                    errorDiv.textContent = "Google Builder Exception Error: " + res.error; 
+                }
+            } catch(err) { 
+                errorDiv.style.color = "#cc0000";
+                errorDiv.textContent = "Client Core Connection Aborted: " + err.message; 
+            }
+        });
+        // Legacy Download Local Openpyxl Excel Method Event
+        document.getElementById('download-excel-btn').addEventListener('click', async () => {
+            if (!currentData) return;
+            const [sName, sTitle] = document.getElementById('signee-select').value.split(' | ');
+            
+            try {
+                const response = await fetch('/api/export-excel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        employee_name: document.getElementById('employee-select').value,
+                        designation: document.getElementById('designation-select').value,
+                        signee_name: sName || '', signee_title: sTitle || '',
+                        entries: currentData.entries
+                    })
+                });
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url;
+                    
+                    const nameKey = document.getElementById('employee-select').value.replace(/\s+/g, '_');
+                    a.download = `${nameKey}_DTR.xlsx`;
+                    document.body.appendChild(a); a.click(); a.remove();
+                } else { errorDiv.textContent = 'Excel Formatting generation failed.'; }
+            } catch (err) { errorDiv.textContent = 'Excel Engine connection error: ' + err.message; }
+        });
+
+        // Wipe Workspace states
+        document.getElementById('clear-btn').addEventListener('click', () => { currentData = null; fileInput.value = ''; resultsDiv.style.display = 'none'; errorDiv.textContent = ''; });
+
+        // Health Checker Sync Loop Handler 
+        async function checkEngineStatus() {
+            const statusNode = document.getElementById('engine-status');
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                if (data.ollama_running && data.model_ready) {
+                    statusNode.innerHTML = `<span style="color: #2b7a1d; font-weight: bold;">READY (${data.model})</span>`;
+                } else if (data.ollama_running && !data.model_ready) {
+                    statusNode.innerHTML = `<span style="color: #ff8c00; font-weight: bold;">MODEL MISSING (${data.model})</span>`;
+                } else {
+                    statusNode.innerHTML = `<span style="color: #cc0000; font-weight: bold;">LOCAL ENGINE OFFLINE</span>`;
+                }
+            } catch (err) {
+                statusNode.innerHTML = `<span style="color: #cc0000; font-weight: bold;">BACKEND SERVER DOWN</span>`;
+            }
+        }
+
+        // Run verification routine checks immediately on load
+        checkEngineStatus();
+    </script>
+</body>
+</html>
